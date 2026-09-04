@@ -1,0 +1,7 @@
+{
+  "name": "PREPAI BD",
+  "description": "AI-Powered Job Preparation & Career Intelligence Platform for Bangladesh (BCS, Bank, Primary, Govt & Private Jobs).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

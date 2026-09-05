@@ -44,7 +44,14 @@ enum class QuestionPaletteState {
 
 enum class DocumentStatus {
     UPLOADED,
+    QUEUED,
     PROCESSING,
+    TEXT_EXTRACTED,
+    OCR_PROCESSING,
+    CLEANING,
+    CHUNKING,
+    INDEXING,
+    COMPLETED,
     READY,
     FAILED
 }
@@ -282,6 +289,20 @@ data class AiReviewQueueItem(
         get() = reviewerNote
 }
 
+data class DocumentChunk(
+    val id: String,
+    val documentId: String,
+    val documentTitle: String,
+    val pageNumber: Int,
+    val chunkIndex: Int,
+    val content: String,
+    val language: String = "bn/en",
+    val subject: String = "General Knowledge",
+    val topic: String = "General",
+    val sourceType: String = "PDF Extraction",
+    val processingStatus: String = "INDEXED"
+)
+
 data class DocumentInfo(
     val id: String,
     val title: String,
@@ -290,11 +311,17 @@ data class DocumentInfo(
     val fileSize: String,
     val pageCount: Int,
     val chunkCount: Int,
+    val processedPages: Int = 0,
     val uploadDate: String = "04 Sep 2026",
     val processingStatus: DocumentStatus = DocumentStatus.READY,
     val vectorStatus: String = "Indexed (RAG Ready)", // "Indexed (RAG Ready)", "Processing", "Queued"
     val sourceMetadata: String = "Ministry / PSC Publication",
-    val copyrightCleared: Boolean = true
+    val copyrightCleared: Boolean = true,
+    val extractedText: String = "",
+    val ocrApplied: Boolean = false,
+    val errorMessage: String? = null,
+    val fileUri: String? = null,
+    val chunks: List<DocumentChunk> = emptyList()
 )
 
 data class SpacedRepetitionItem(

@@ -47,7 +47,7 @@ class GeminiAiService : AiTutorService {
         }
 
         val systemPrompt = buildSystemPrompt(mode, language, contextInfo)
-        val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
+        val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
 
         try {
             val jsonBody = JSONObject().apply {

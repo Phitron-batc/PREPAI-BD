@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ai.GeminiAiService
@@ -11,6 +12,8 @@ import com.example.data.model.AuthState
 import com.example.data.model.ChatMessage
 import com.example.data.model.DifficultyLevel
 import com.example.data.model.DocumentInfo
+import com.example.data.model.DocumentStatus
+import com.example.data.engine.RealPdfProcessingEngine
 import com.example.data.model.ExamAttempt
 import com.example.data.model.JobCircular
 import com.example.data.model.MockExam
@@ -295,9 +298,12 @@ class PrepAiViewModel(application: Application) : AndroidViewModel(application) 
         _isAiThinking.value = true
 
         viewModelScope.launch {
+            val ragRetrieval = RagKnowledgeEngine.executeRagRetrieval(text, adminDocuments.value)
+            val contextInfo = if (ragRetrieval.retrievedChunks.isNotEmpty()) ragRetrieval.assembledContext else ""
             val aiResponseText = geminiService.askTutor(
                 userQuery = text,
                 mode = _currentTutorMode.value,
+                contextInfo = contextInfo,
                 language = _currentLanguage.value
             )
             val aiMsg = ChatMessage(isUser = false, messageText = aiResponseText, mode = _currentTutorMode.value)
@@ -410,6 +416,27 @@ class PrepAiViewModel(application: Application) : AndroidViewModel(application) 
         if (index != -1) {
             queue[index] = queue[index].copy(status = ReviewStatus.REJECTED)
             aiReviewQueue.value = queue
+        }
+    }
+
+    fun editAndApproveAiQuestion(updatedItem: AiReviewQueueItem) {
+        val queue = aiReviewQueue.value.toMutableList()
+        val index = queue.indexOfFirst { it.id == updatedItem.id }
+        val approvedItem = updatedItem.copy(
+            status = ReviewStatus.APPROVED,
+            question = updatedItem.question.copy(
+                questionStatus = QuestionStatus.APPROVED,
+                status = ReviewStatus.APPROVED
+            )
+        )
+        if (index != -1) {
+            queue[index] = approvedItem
+        } else {
+            queue.add(0, approvedItem)
+        }
+        aiReviewQueue.value = queue
+        viewModelScope.launch {
+            repository.addQuestion(approvedItem.question)
         }
     }
 
@@ -724,8 +751,70 @@ class PrepAiViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // -------------------------------------------------------------
-    // Phase 4: Document Ingestion & RAG Knowledge Engine
+    // Phase 4: Real Document Ingestion & RAG Knowledge Engine
     // -------------------------------------------------------------
+    fun uploadAndProcessRealPdf(
+        context: android.content.Context,
+        uri: Uri,
+        title: String,
+        category: String,
+        docType: String
+    ) {
+        viewModelScope.launch {
+            RealPdfProcessingEngine.processPdfDocument(
+                context = context,
+                uri = uri,
+                title = title,
+                category = category,
+                docType = docType,
+                onProgress = { progressDoc ->
+                    val docs = adminDocuments.value.toMutableList()
+                    val existingIndex = docs.indexOfFirst { it.id == progressDoc.id }
+                    if (existingIndex != -1) {
+                        docs[existingIndex] = progressDoc
+                    } else {
+                        docs.add(0, progressDoc)
+                    }
+                    adminDocuments.value = docs
+                }
+            )
+        }
+    }
+
+    fun retryProcessDocument(context: android.content.Context, docId: String) {
+        val doc = adminDocuments.value.firstOrNull { it.id == docId } ?: return
+        val uriStr = doc.fileUri ?: return
+        val uri = Uri.parse(uriStr)
+        uploadAndProcessRealPdf(
+            context = context,
+            uri = uri,
+            title = doc.title,
+            category = doc.category,
+            docType = doc.documentType
+        )
+    }
+
+    fun deleteDocument(docId: String) {
+        val docs = adminDocuments.value.toMutableList()
+        docs.removeAll { it.id == docId }
+        adminDocuments.value = docs
+    }
+
+    fun generateQuestionsFromRealDocument(docId: String, count: Int = 3) {
+        val doc = adminDocuments.value.firstOrNull { it.id == docId } ?: return
+        viewModelScope.launch {
+            val generated = RealPdfProcessingEngine.generateGroundedQuestions(
+                document = doc,
+                chunks = doc.chunks,
+                count = count,
+                geminiService = geminiService
+            )
+            val updatedQueue = aiReviewQueue.value.toMutableList()
+            updatedQueue.addAll(0, generated)
+            aiReviewQueue.value = updatedQueue
+        }
+    }
+
     fun uploadAndProcessDocument(
         title: String,
         docType: String,
